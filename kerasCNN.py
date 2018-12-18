@@ -10,8 +10,8 @@ IMG_HEIGHT, IMG_WIDTH = 180,200
 CHANNELS = 3
 NUM_CLASSES = 24 
 N_TRAIN = 4774
-N_TEST = 1969
-epochs = 2
+N_TEST = 1672
+epochs = 50
 batch_size = 32
 train_dir = "../data/sc5"
 aux_test = "../data/sc5-test"
@@ -260,7 +260,7 @@ def main(Args):
 def plot_metrics(history):
         print("plotting the results for accuracy")
         plt.plot(history.history["acc"])
-        plt.plot(history.history["val_acc]")
+        plt.plot(history.history["val_acc"])
         plt.title('model acc')
         plt.ylabel("acc")
         plt.xlabel('epoch')
