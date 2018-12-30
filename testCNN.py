@@ -1,17 +1,20 @@
 import tensorflow as tf
 import keras 
+import numpy as np
 from keras.preprocessing.image import ImageDataGenerator
+from keras.models import load_model
 import os
-from shutil import copyfile
 import matplotlib.pyplot as plt
 import argparse
+from sklearn.metrics import classification_report
+
 
 IMG_HEIGHT, IMG_WIDTH = 180,200
 CHANNELS = 3
 NUM_CLASSES = 24 
 N_TRAIN = 4774
 N_TEST = 1672
-epochs = 20
+epochs = 50
 batch_size = 32
 train_dir = "../data/sc5"
 aux_test = "../data/sc5-test"
@@ -86,13 +89,10 @@ def get_generators():
                 directory=aux_test,
                 target_size=(IMG_WIDTH, IMG_HEIGHT),
                 batch_size=batch_size)
-        return train_generator,validation_generator
+        return train_generator, validation_generator
+        
 
-
-
-
-#################################### MODEL SELECTION ######################################
-
+##############################################################################################################        
 
 def leNet(optimizer="adam"):
     
@@ -208,103 +208,120 @@ def alexNet(optimizer="adam", loss="categorical_crossentropy" ):
 
     return model 
 
+#The structure of this network is the same as the one we saw in the excerxise during the lectures.
+def alexNet(optimizer="adam", loss="categorical_crossentropy" ):
+    
+    image_input = tf.keras.Input( shape=(IMG_WIDTH,IMG_HEIGHT,CHANNELS), name="Boat_input"  )
+    
+    #convolutional layer 1 
+    conv_layer_1 = tf.keras.layers.Conv2D( filters = 96 , kernel_size = (11 , 11), 
+            strides=(4,4), padding="valid", activation="relu" )(image_input)
 
-###################################### TRAIN THE MODEL ####################################################
+    conv_layer_1 = tf.keras.layers.MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid')(conv_layer_1)
 
+    conv_layer_1 = tf.keras.layers.BatchNormalization()(conv_layer_1)
 
-def train_model (model , train_generator, validation_generator):
-        
-        history = model.fit_generator(
-                generator =  train_generator,
-                steps_per_epoch=N_TRAIN / batch_size,
-                epochs=epochs,
-                validation_data=validation_generator,
-                validation_steps=N_TEST / batch_size
-        )
-        return history
+    #convolutional layer 2 
+    conv_layer_2 = tf.keras.layers.Conv2D( filters = 256 , kernel_size = (6, 6), 
+            strides=(1,1), padding="valid", activation="relu" )(conv_layer_1)
 
+    conv_layer_2 = tf.keras.layers.MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid')(conv_layer_2)
 
+    conv_layer_2 = tf.keras.layers.BatchNormalization()(conv_layer_2)
+
+    #convolutional layer 3
+    conv_layer_3 = tf.keras.layers.Conv2D( filters = 384 , kernel_size = (3 , 3), 
+            strides=(1,1), padding="valid", activation="relu" )(conv_layer_2)
+
+    conv_layer_3 = tf.keras.layers.BatchNormalization()(conv_layer_3)
+
+    #convolutional layer 4
+    conv_layer_4 = tf.keras.layers.Conv2D( filters = 384 , kernel_size = (3 , 3), 
+            strides=(1,1), padding="valid", activation="relu" )(conv_layer_3)
+            
+    conv_layer_4 = tf.keras.layers.BatchNormalization()(conv_layer_4)
+
+    #convolutional layer 5 
+    conv_layer_5 = tf.keras.layers.Conv2D( filters = 256 , kernel_size = (3 , 3), 
+            strides=(1,1), padding="valid", activation="relu" )(conv_layer_4)
+
+    conv_layer_5 = tf.keras.layers.MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid')(conv_layer_5)
+
+    conv_layer_5 = tf.keras.layers.BatchNormalization()(conv_layer_5)
+
+    #Flatten the output of the convolutional layers
+    conv_flat = tf.keras.layers.Flatten()(conv_layer_5)
+    
+    #dense layers 
+    dense_layer_1 = tf.keras.layers.Dense(units=4096, activation='relu')(conv_flat)
+    dense_layer_1 = tf.keras.layers.Dropout(0.4)(dense_layer_1)
+    dense_layer_1 = tf.keras.layers.BatchNormalization()(dense_layer_1)
+
+    dense_layer_2 = tf.keras.layers.Dense(units=4096, activation='relu')(dense_layer_1)
+    dense_layer_2 = tf.keras.layers.Dropout(0.4)(dense_layer_2)
+    dense_layer_2 = tf.keras.layers.BatchNormalization()(dense_layer_2)
+
+    dense_layer_3 = tf.keras.layers.Dense(units=1000, activation='relu')(dense_layer_2)
+    dense_layer_3 = tf.keras.layers.Dropout(0.4)(dense_layer_3)
+    dense_layer_3 = tf.keras.layers.BatchNormalization()(dense_layer_3)
+
+    #output layer 
+    output_layer = tf.keras.layers.Dense(units=NUM_CLASSES, activation="softmax", name="Boat_type")(dense_layer_3)
+
+    model = tf.keras.Model( inputs=image_input, outputs=[output_layer] )
+    #default adam optimizer has learning rate of 1e-3, in addition you can create another learning rate optimizer via Adam(lr=1e-3)
+    if optimizer=="gradient":
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate = 1e-3 )
+    if loss=="mse":
+        loss="mse"
+    model.compile(loss=loss, optimizer=optimizer, metrics=["mse", 'accuracy'])
+
+    return model 
 ######################################### MAIN PROGRAM ####################################################
 def main(Args):
         #data preparation
         prepare_test_set()
         train_generator , validation_generator = get_generators()
-        #model selection
+        
+        #save the weights 
         model = "" 
         if Args.cnn == "leNet":
                 print("model: leNet")
-                model = leNet(Args.optimizer)
+                model = leNet()
         else: 
                 print("model: alexNet")
-                model = alexNet(Args.optimizer, Args.loss)
-        
+                model = alexNet()
+
+        model.load_weights(Args.model)
+        print("model loaded ")
         print(model.inputs)
-        print("leNet..")
-        print("params : \n\toptimizer: ", Args.optimizer, "\n\tloss: ", Args.loss)
+        print("CNN..")
         print(model.outputs)
-        #train model 
-        print("training the model....")
-        history = train_model(model, train_generator, validation_generator)
-        print("model trained!")
-        #save the weights 
-        model.save_weights("../results/"+Args.save+'.h5')
-        print("model saved in ", Args.save)
+        
         #evaluate results 
         print("computing the score...")
-        score = model.evaluate(validation_generator)
+        evaluate = model.evaluate(validation_generator)
         i=0
         for metric_name in model.metrics_names:
-                print("Test ", metric_name, ": ", score[i])        
+                print("Test ", metric_name, ": ", evaluate[i])        
                 i+=1
-        #plots:
-        plot_metrics(history)
         
-
+        #precision recall f1 score 
+        predict = model.predict_generator(validation_generator)
+        y_pred = np.argmax(predict, axis=-1)
+        y_true = validation_generator.classes
+        print(classification_report(y_true, y_pred) )
+        
 
 
 
 
 ###################################################### AUX FUNCTIONS #######################################################################
 
-#this is not parametric because the image is not immediatly saved and this produces an interleave during the plotting, 
-#in order to avoid this we do it sequentially.
-def plot_metrics(history):
-        print("plotting the results for accuracy")
-        plt.plot(history.history["acc"])
-        plt.plot(history.history["val_acc"])
-        plt.title('model acc')
-        plt.ylabel("acc")
-        plt.xlabel('epoch')
-        plt.legend(['train', 'test'], loc='upper left')
-        plt.savefig('../results/accuracy.jpg')
-        plt.clf() #clean figure
-        ############################################
-        print("plotting the results for loss")
-        plt.plot(history.history["loss"])
-        plt.plot(history.history["val_loss"])
-        plt.title('model loss')
-        plt.ylabel("loss")
-        plt.xlabel('epoch')
-        plt.legend(['train', 'test'], loc='upper left')
-        plt.savefig('../results/loss.jpg')
-        plt.clf() #clean figure 
-        ###########################################
-        print("plotting the results for accuracy")
-        plt.plot(history.history["mean_squared_error"])
-        plt.plot(history.history["val_mean_squared_error"])
-        plt.title('model mean_squared_error')
-        plt.ylabel("mean_squared_error")
-        plt.xlabel('epoch')
-        plt.legend(['train', 'test'], loc='upper left')
-        plt.savefig('../results/mean_squared_error.jpg')
-
-
 
 def ParseArgs():
-    Args = argparse.ArgumentParser(description="Program to perform class detection via a CNN (we will use alexNet) on the venice boat dataset" )
-    Args.add_argument("--optimizer", default= "adam",help="the optimizer to use during the learning: adam vs gradient")
-    Args.add_argument("--loss", default="categorical_crossentropy",help="the loss function to use during the learning: categorical_crossentropy vs mse")
-    Args.add_argument("--save",default="../results/model",help="the path and the name where to save the model")
+    Args = argparse.ArgumentParser(description="testing module" )
+    Args.add_argument("--model", required=True,help="the model.h5 complete path wrt the current position")
     Args.add_argument("--cnn", default= "alexNet",help="the model to use")
     return Args.parse_args()
 
